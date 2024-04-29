@@ -1,0 +1,87 @@
+from langchain.prompts import PromptTemplate
+from langchain.schema.output_parser import StrOutputParser
+from langchain.schema.runnable import RunnablePassthrough
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.vectorstores.utils import filter_complex_metadata
+from langchain_community.chat_models import ChatOllama
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.embeddings import FastEmbedEmbeddings
+from langchain_community.vectorstores import Chroma
+import chromadb
+from chromadb.config import Settings
+
+chroma_client = chromadb.HttpClient(host="http://localhost:8000/", port = 8000, settings=Settings(allow_reset=False, anonymized_telemetry=False))
+
+
+class ChatPDF:
+
+    def format_docs(self, docs):
+        print(docs)
+        return "\n\n".join([d.page_content for d in docs])
+
+    def __init__(self):
+        self.model = ChatOllama(
+            temperature=0,
+            base_url='http://localhost:11434',
+            model="mistral",
+            streaming=True,
+            # seed=2,
+            top_k=10,  # A higher value (100) will give more diverse answers, while a lower value (10) will be more conservative.
+            top_p=0.3,  # Higher value (0.95) will lead to more diverse text, while a lower value (0.5) will generate more focused text.
+            num_ctx=3072,  # Sets the size of the context window used to generate the next token.
+        )
+        self.text_splitter = RecursiveCharacterTextSplitter(chunk_size=1024, chunk_overlap=100)
+        self.prompt = PromptTemplate.from_template(
+            """
+            <s> [INST] You are an assistant for question-answering tasks. Use the following pieces of retrieved context 
+            to answer the question. If you don't know the answer, just say that you don't know. Use three sentences
+             maximum and keep the answer concise. [/INST] </s> 
+            [INST] Question: {question} 
+            Context: {context} 
+            Answer: [/INST]
+            """
+        )
+        self.vector_store = None
+        self.retriever = None
+        self.chain = None
+
+    def ingest(self, pdf_file_path: str):
+        docs = PyPDFLoader(file_path=pdf_file_path).load()
+        docLen = len(docs)
+        chunks = self.text_splitter.split_documents(docs)
+        chunks = filter_complex_metadata(chunks)
+        collection = chroma_client.get_or_create_collection(name="kantha_collection")
+        self.vector_store = Chroma(client=chroma_client, embedding_function=FastEmbedEmbeddings(model_name='mixedbread-ai/mxbai-embed-large-v1', max_length=1024), collection_name="kantha_collection")
+        print('Vectore store object is created')
+        self.vector_store.add_documents(documents=chunks)
+        print('Vectore store object is stored')
+        self.retriever = self.vector_store.as_retriever(
+            search_type="similarity_score_threshold",
+            search_kwargs={
+                "k": 3,
+                "score_threshold": 0.5,
+            },
+        )
+        print('Vectore store retriever is')
+        print(self.retriever)
+        self.chain = ({"context": self.retriever | self.format_docs, "question": RunnablePassthrough()}
+                      | self.prompt
+                      | self.model
+                      | StrOutputParser())
+
+    def ask(self, query: str):
+        print('Asking for ::  '+str(query))
+        print(self.retriever)
+        if not self.chain:
+            self.chain = ({"context": lambda x: self.retriever | self.format_docs, "question": RunnablePassthrough()}
+                          | self.prompt
+                          | self.model
+                          | StrOutputParser())
+
+        return self.chain.invoke(query)
+
+
+    def clear(self):
+        self.vector_store = None
+        self.retriever = None
+        self.chain = None

@@ -1,0 +1,80 @@
+docker run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama
+
+docker run -d -v ollama:/root/.ollama -p 8000:8000 --name chromadb chromadb/chroma
+
+curl http://localhost:11434/api/generate -d '{
+  "model": "mistral",
+  "prompt":"Why is the sky blue?"
+}'
+
+
+curl http://localhost:11434/api/chat -d '{
+  "model": "mistral",
+  "messages": [
+    { "role": "user", "content": "why is the sky blue?" }
+  ]
+}'
+
+
+
+https://python.langchain.com/docs/modules/data_connection/document_loaders/pdf/
+
+pip install pypdf
+
+from langchain_community.document_loaders import PyPDFLoader
+
+loader = PyPDFLoader("example_data/layout-parser-paper.pdf")
+pages = loader.load_and_split()
+
+from langchain_community.vectorstores import FAISS
+from langchain_openai import OpenAIEmbeddings
+
+faiss_index = FAISS.from_documents(pages, OpenAIEmbeddings())
+docs = faiss_index.similarity_search("How will the community be engaged?", k=2)
+
+
+
+from langchain_openai import OpenAIEmbeddings
+
+faiss_index = FAISS.from_documents(pages, OpenAIEmbeddings())
+docs = faiss_index.similarity_search("How will the community be engaged?", k=2)
+
+
+ollama run mxbai-embed-large
+
+
+ollama run i mxbai-embed-large
+
+ollama.embeddings(
+  model='mxbai-embed-large',
+  prompt='Llamas are members of the camelid family',
+)
+
+
+https://medium.com/@vndee.huynh/build-your-own-rag-and-run-it-locally-langchain-ollama-streamlit-181d42805895
+
+
+
+curl -X POST http://localhost:11434/api/generate -d '{
+  "model": "mistral",
+  "prompt":"Here is a story about llamas eating grass"
+ }'
+
+
+curl -X POST http://localhost:11434/api/generate -d '{
+  "model": "llama3",
+  "prompt":"Why is the sky blue?"
+ }'
+
+
+docker exec -it <<container_id>> /bin/sh
+
+then we can pull any llm if required to load in local
+
+ollama run mistra
+
+or
+
+ollama run llama3
+
+
